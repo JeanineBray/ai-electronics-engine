@@ -1,9 +1,20 @@
 import random
-from fastapi import HTTPException
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from app.auth import get_current_user_id
 from app.db import supabase
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
@@ -99,7 +110,7 @@ def generate_problem(objective_code: str):
     }
 
 @app.post("/attempts/grade/{problem_id}")
-def grade_attempt(problem_id: str, value: float, units: str = "V"):
+def grade_attempt(problem_id: str, value: float, units: str = "V", user_id: str = Depends(get_current_user_id)):
     # load problem
     prob = supabase.table("problems").select("id,params,answer_key").eq("id", problem_id).limit(1).execute().data
     if not prob:
@@ -128,7 +139,7 @@ def grade_attempt(problem_id: str, value: float, units: str = "V"):
     # Store attempt (user_id/session_id later; for now use a placeholder user_id)
     # NOTE: We'll wire real user_id from Supabase Auth when we connect frontend.
     attempt = supabase.table("attempts").insert({
-        "user_id": "00000000-0000-0000-0000-000000000000",
+        "user_id": user_id,
         "session_id": None,
         "problem_id": prob["id"],
         "answer": {"value": value, "units": units},
@@ -147,3 +158,7 @@ def grade_attempt(problem_id: str, value: float, units: str = "V"):
         "feedback": feedback,
         "attempt_id": attempt["id"]
     }
+
+@app.get("/me")
+def me(user_id: str = Depends(get_current_user_id)):
+    return {"user_id": user_id}
